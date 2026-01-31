@@ -1,0 +1,12 @@
+name: Dev Manual Echo
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  echo-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say Hello
+        run: echo "🚀 Manual or Push trigger worked!"
