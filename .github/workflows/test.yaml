@@ -2,7 +2,6 @@ name: Dev Manual Echo
 
 on:
   push:
-  workflow_dispatch:
 
 jobs:
   echo-job:
