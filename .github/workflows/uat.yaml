@@ -1,4 +1,4 @@
-name: Echo on Push
+name: Echo on Push-uat
 
 on:
   push:
