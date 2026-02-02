@@ -2,6 +2,8 @@ name: Echo on Push-uat
 
 on:
   push:
+    branches:
+      - uat  
 
 jobs:
   echo-job:
