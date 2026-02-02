@@ -1,0 +1,234 @@
+name: macm-ihd-java-service-feature
+ 
+on:
+  workflow_call:
+    inputs: 
+      CONTAINER_BUILD:
+        required: false 
+        type: boolean
+      AWS_REGION:
+        required: false
+        type: string
+      CLUSTER_NAME:
+        required: false
+        type: string
+      NAMESPACE:
+        required: true
+        type: string
+      DEPLOY:
+        required: false
+        type: boolean
+        default: false
+      roleArn:
+        required: false
+        type: string
+      ecr:
+        required: false
+        type: string
+      ecr_repo_name:
+        required: false
+        type: string
+      ENVIRONMENT:
+        required: false
+        type: string
+      CF_INVALIDATE_CACHE:
+        required: false
+        type: boolean
+        default: false
+      CF_ROLEARN:
+        required: false
+        type: string
+      CF_DISTRIBUTION_ID:
+        required: false
+        type: string
+    secrets:
+      DOCKER_USERNAME:
+        required: false
+      DOCKER_PASSWORD:
+        required: false
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+ 
+env:
+  #BRANCH: $(git rev-parse --abbrev-ref HEAD)
+  BRANCH: ${{ github.ref_name }}
+  COMMIT_ID: $(git rev-parse HEAD)
+  SERVICE_NAME: ${{github.event.repository.name}}
+  GUARDIAN_URL: guard.mirae-asset.co.in:8289
+  GIT_HASH: $(git rev-parse --short "$GITHUB_SHA")
+  ENVIRONMENT: ${{inputs.ENVIRONMENT}}
+ 
+jobs:
+  app-build:
+    runs-on:
+      group: ${{ inputs.ENVIRONMENT == 'IHD-DEV' && 'IHD-DEV-ARC-RG' || inputs.ENVIRONMENT == 'IHD-UAT' && 'IHD-UAT-ARC-RG'}}
+      # group: non-prod-runner-rg
+    steps:
+      - name: Check if branch name contains 'feature'
+        run: |
+          if [[ "${{ github.ref }}" != *"feature"* ]]; then
+            echo "❌ This workflow can only be triggered on branches containing 'feature'"
+            exit 1
+          fi
+          echo "✅ Running workflow on branch: ${{ github.ref }}"
+      - name: Checkout code
+        uses: actions/checkout@v4
+ 
+      - name: Set up JDK 21 (Attempt 1)
+        id: setup_java_1
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'oracle'
+        continue-on-error: true # Continue on error to allow retry attempts
+ 
+      - name: Set up JDK 21 (Attempt 2)
+        if: steps.setup_java_1.outcome == 'failure'  # Retry if the first step failed
+        id: setup_java_2
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'oracle'
+        continue-on-error: true
+ 
+      - name: Set up JDK 21 (Attempt 3)
+        if: steps.setup_java_2.outcome == 'failure'  # Retry if the second attempt failed
+        id: setup_java_3
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'oracle'
+        continue-on-error: true
+ 
+      - name: Final JDK 21 Setup (Attempt 4)
+        if: steps.setup_java_3.outcome == 'failure'  # Retry if the third attempt failed
+        id: setup_java_4
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'oracle'
+        continue-on-error: true
+      - name: Final JDK 21 Setup (Attempt 5)
+        if: steps.setup_java_4.outcome == 'failure'  # Retry if the 4rth attempt failed
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'oracle'
+      - name: Build with Maven
+        run: mvn clean install -Dmaven.test.skip=true
+      - name: Uploads
+        uses: actions/upload-artifact@v4.0.0
+        with:
+          name: artifact-${{env.ENVIRONMENT}}
+          path: target/*.jar
+      
+  container-build-push:
+    needs: [app-build]
+    if: inputs.CONTAINER_BUILD == true
+    runs-on:
+      group: ${{ inputs.ENVIRONMENT == 'IHD-DEV' && 'IHD-DEV-ARC-RG' || inputs.ENVIRONMENT == 'IHD-UAT' && 'IHD-UAT-ARC-RG' }}
+      # group: non-prod-runner-rg
+    env:
+      DOCKER_USERNAME: ${{secrets.DOCKER_USERNAME}}
+      DOCKER_PASSWORD: ${{secrets.DOCKER_PASSWORD}}
+      AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}}
+      AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
+      AWS_REGION: ${{ inputs.AWS_REGION }}
+      ecr: ${{inputs.ecr}}
+      roleArn: ${{inputs.roleArn}}
+    steps:
+      - uses: actions/checkout@v4
+      # Add Docker login step
+      - name: Docker Hub Login
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Download Artifact if exists
+        uses: actions/download-artifact@v4.1.0
+        with:
+          name: artifact-${{env.ENVIRONMENT}}
+          path: build/
+      - name: Docker Build
+        run: |
+          ecr_repo_name=$(echo ${{ env.SERVICE_NAME}} | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
+          echo "ecr_repo_name=$ecr_repo_name" >> $GITHUB_ENV
+          docker build -f deployment-config/Dockerfile -t ${{inputs.ecr}}/$ecr_repo_name:feature-${{ env.GIT_HASH}} .
+      - name: AWS Login
+        run: |
+          Cross_Acc_Role=$(aws sts assume-role --role-arn ${{ env.roleArn }} --role-session-name AWSCLI-Session)
+          echo "AWS_ACCESS_KEY_ID=$(echo $Cross_Acc_Role | jq -r .Credentials.AccessKeyId)" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$(echo $Cross_Acc_Role | jq -r .Credentials.SecretAccessKey)" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$(echo $Cross_Acc_Role | jq -r .Credentials.SessionToken)" >> $GITHUB_ENV
+      - name: ECR REPO CREATE IF NOT EXIST
+        run: |
+          aws ecr create-repository --repository-name $ecr_repo_name --region $AWS_REGION  --image-scanning-configuration scanOnPush=true || true
+      - name: Image push to ECR
+        run: |
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{inputs.ecr}}
+          docker push ${{inputs.ecr}}/$ecr_repo_name:feature-${{ env.GIT_HASH}}    
+  deployment:
+    needs: container-build-push
+    runs-on:
+      group: ${{ inputs.ENVIRONMENT == 'IHD-DEV' && 'IHD-DEV-ARC-RG' || inputs.ENVIRONMENT == 'IHD-UAT' && 'IHD-UAT-ARC-RG' }}
+      # group: non-prod-runner-rg
+    if: inputs.DEPLOY == true
+    environment: ${{inputs.ENVIRONMENT}}
+    env:
+      AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}}
+      AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
+      AWS_REGION: ${{ inputs.AWS_REGION }}
+      ecr: ${{inputs.ecr}}
+      roleArn: ${{inputs.roleArn}}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: deploy
+        run: |-
+          Cross_Acc_Role=$(aws sts assume-role --role-arn ${{ env.roleArn }} --role-session-name AWSCLI-Session)
+          export AWS_ACCESS_KEY_ID=$(echo $Cross_Acc_Role | jq -r .Credentials.AccessKeyId)
+          export AWS_SECRET_ACCESS_KEY=$(echo $Cross_Acc_Role | jq -r .Credentials.SecretAccessKey)
+          export AWS_SESSION_TOKEN=$(echo $Cross_Acc_Role | jq -r .Credentials.SessionToken)
+          release=$(echo ${{github.event.repository.name}} | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
+          echo $release
+          aws eks update-kubeconfig --name ${{ inputs.CLUSTER_NAME }} --region $AWS_REGION
+          ENVIRONMENT=${{inputs.ENVIRONMENT}}
+          if [[ "$ENVIRONMENT" == "IHD-UAT" ]]; then 
+              VALUES="uat-values.yaml"; tag=feature-${{ env.GIT_HASH}}
+          elif [[ "$ENVIRONMENT" == "IHD-DEV" ]]; then 
+              VALUES="dev-values.yaml"; tag=feature-${{ env.GIT_HASH}}    
+          fi
+          helm upgrade --install --values deployment-config/helm-chart/environment/$VALUES --set image.repository=$ecr/$release --set image.tag=$tag --set image.pullPolicy=Always $release deployment-config/helm-chart -n ${{inputs.NAMESPACE}}
+          echo $command          
+          # kubectl get deployments -n ${{inputs.NAMESPACE}} --selector=app.kubernetes.io/name="$release" --no-headers | awk '{print $1}' | xargs -I {} kubectl rollout restart deployment {} -n ${{inputs.NAMESPACE}}
+          echo "Deployment successful"
+ 
+  cloudfront:
+    needs: deployment
+    runs-on:
+      group: ${{ inputs.ENVIRONMENT == 'IHD-DEV' && 'IHD-DEV-ARC-RG' || inputs.ENVIRONMENT == 'IHD-UAT' && 'IHD-UAT-ARC-RG' }}
+      # group: non-prod-runner-rg
+    if: ${{ inputs.CF_INVALIDATE_CACHE }}
+    env:
+      AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}}
+      AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
+      AWS_REGION: ${{ inputs.AWS_REGION }}
+      ecr: ${{inputs.ecr}}
+      roleArn: ${{inputs.CF_ROLEARN}}
+    steps:
+      - name: invalidate cache
+        run: |-
+          echo "Waiting for 60 seconds..."
+          sleep 60
+          
+          Cross_Acc_Role=$(aws sts assume-role --role-arn ${{ env.roleArn }} --role-session-name AWSCLI-Session)
+          export AWS_ACCESS_KEY_ID=$(echo $Cross_Acc_Role | jq -r .Credentials.AccessKeyId)
+          export AWS_SECRET_ACCESS_KEY=$(echo $Cross_Acc_Role | jq -r .Credentials.SecretAccessKey)
+          export AWS_SESSION_TOKEN=$(echo $Cross_Acc_Role | jq -r .Credentials.SessionToken)
+          #aws cloudfront create-invalidation --distribution-id ${{ inputs.CF_DISTRIBUTION_ID }} --paths "/*"
+          IFS=',' read -r -a DISTRIBUTION_IDS <<< "${{ inputs.CF_DISTRIBUTION_ID }}"
+          INVALIDATION_PATH="/*"
+          
+          for ID in "${DISTRIBUTION_IDS[@]}"; do
+            echo "Invalidating distribution: $ID"
+            aws cloudfront create-invalidation --distribution-id "$ID" --paths "$INVALIDATION_PATH"
+          done
