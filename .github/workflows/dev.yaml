@@ -1,13 +1,32 @@
-name: Echo on Push
+name: Dev Build Apply Deploy
 
 on:
   push:
     branches:
-      - dev  
+      - dev
 
 jobs:
-  echo-job:
+  build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
-      - name: Say Hello
-        run: echo "🚀 Code pushed successfully!"
+      - uses: actions/checkout@v4
+      - name: Build step
+        run: echo "🔨 Building application..."
+
+  apply:
+    name: Apply
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply changes
+        run: echo "📦 Applying infrastructure / config..."
+
+  deploy:
+    name: Deploy (Approval Required)
+    needs: apply
+    runs-on: ubuntu-latest
+    environment: dev   # 👈 approval comes from here
+    steps:
+      - name: Deploy application
+        run: echo "🚀 Deploying to DEV environment..."
