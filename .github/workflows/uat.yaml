@@ -3,7 +3,7 @@ name: Echo on Push-uat
 on:
   push:
     branches:
-      - uat  
+      - workflow_dispatch  
 
 jobs:
   echo-job:
