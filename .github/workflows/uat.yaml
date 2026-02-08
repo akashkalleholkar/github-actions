@@ -1,9 +1,7 @@
 name: Echo on Push-uat
 
 on:
-  push:
-    branches:
-      - workflow_dispatch  
+  workflow_dispatch: 
 
 jobs:
   echo-job:
