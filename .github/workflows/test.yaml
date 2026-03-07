@@ -1,11 +1,20 @@
-name: Dev Manual Echo
+name: higher-environment-demo
 
 on:
+  push:
+    branches:
+      - prod
   workflow_dispatch:
 
 jobs:
-  echo-job:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Say Hello
-        run: echo "🚀 Manual trigger worked!"
+  uat:
+    uses: akashkalleholkar/githubworkflows/.github/workflows/demo.yml@main
+
+    with:
+      ENVIRONMENT: UAT
+      BUILD: true
+      TEST: true
+      DEPLOY: true
+
+    secrets:
+      DEMO_TOKEN: ${{ secrets.DEMO_TOKEN }}
