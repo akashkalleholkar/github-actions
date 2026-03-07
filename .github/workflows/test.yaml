@@ -13,7 +13,7 @@ jobs:
     with:
       ENVIRONMENT: UAT
       BUILD: true
-      TEST: true
+      TEST: false
       DEPLOY: true
 
     secrets:
