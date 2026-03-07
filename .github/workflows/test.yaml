@@ -11,7 +11,7 @@ jobs:
     uses: akashkalleholkar/githubworkflows/.github/workflows/demo.yml@main
 
     with:
-      ENVIRONMENT: UAT
+      #ENVIRONMENT: UAT
       BUILD: true
       TEST: true
       DEPLOY: true
