@@ -3,7 +3,7 @@ name: higher-environment-demo
 on:
   push:
     branches:
-      - prod
+      - prodhgj
   workflow_dispatch:
 
 jobs:
