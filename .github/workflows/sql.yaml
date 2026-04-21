@@ -1,0 +1,55 @@
+name: Dev CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  dev-deploy:
+    name: Dev Build & Deploy
+    runs-on: ubuntu-latest
+
+    env:
+      SERVICE_NAME: my-service
+      ENVIRONMENT: dev
+
+    steps:
+      # Checkout stage
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Build stage
+      - name: Build
+        run: |
+          echo "Starting build for $SERVICE_NAME"
+          echo "Build completed"
+
+      # Scan stage
+      - name: Scan
+        run: |
+          echo "Running security scan"
+          echo "Scan completed"
+
+      # Deploy stage
+      - name: Deploy
+        run: |
+          echo "Deploying $SERVICE_NAME to $ENVIRONMENT environment"
+          echo "Deployment successful"
+
+      # MySQL update after deploy
+      - name: Update MySQL deployment info
+        run: |
+          DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+
+          mysql \
+            --host=${{ secrets.MYSQL_HOST }} \
+            --user=${{ secrets.MYSQL_USER }} \
+            --password=${{ secrets.MYSQL_PASSWORD }} \
+            --database=${{ secrets.MYSQL_DATABASE }} \
+            --execute="
+              INSERT INTO deployment_log
+                (service_name, environment, deploy_time)
+              VALUES
+                ('$SERVICE_NAME', '$ENVIRONMENT', '$DEPLOY_TIME');
+            "
