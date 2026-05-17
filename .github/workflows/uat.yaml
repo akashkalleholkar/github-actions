@@ -1,7 +1,9 @@
 name: Test MySQL Connection
 
-on:
-  workflow_dispatch:
+on: 
+  push:
+    branches:
+      - dev
 
 jobs:
   test-mysql-connection:
