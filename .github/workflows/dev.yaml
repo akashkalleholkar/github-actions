@@ -1,32 +1,31 @@
-name: Dev Build Apply Deploy
+name: dev
 
-on:
+on: 
   push:
     branches:
-      - devd
+      - dev
 
 jobs:
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build step
-        run: echo "🔨 Building application..."
-
-  apply:
-    name: Apply
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Apply changes
-        run: echo "📦 Applying infrastructure / config..."
-
-  deploy:
-    name: Deploy (Approval Required)
-    needs: apply
-    runs-on: ubuntu-latest
-    environment: dev   # 👈 approval comes from here
-    steps:
-      - name: Deploy application
-        run: echo "🚀 Deploying to DEV environment..."
+  dev:
+    uses: akashkalleholkar/githubworkflows/.github/workflows/dashboard.yaml@main
+    with: 
+      SAST_SCAN: true
+      SCA_SCAN: true
+      CONTAINER_SCAN: true
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CLUSTER_NAME: ${{vars.CLUSTER_NAME_DEV}}
+      NAMESPACE: customer-excellence
+      DEPLOY: true
+      roleArn: ${{ vars.ROLEARN_DEV }}
+      ecr: ${{ vars.ECR_DEV }}
+      CONTAINER_BUILD: true
+      IAC_SCAN: true
+      ENVIRONMENT: IHD-DEV
+      SNYK_ORG: macm-infra-1
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      GUARDIAN_TOKEN: ${{ secrets.GUARDIAN_TOKEN }}
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
