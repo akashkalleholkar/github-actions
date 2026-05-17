@@ -1,11 +1,15 @@
-name: Echo on Push-uat
+name: Test MySQL Connection
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
-  echo-job:
+  test-mysql-connection:
     runs-on: ubuntu-latest
     steps:
-      - name: Say Hello
-        run: echo "🚀 Code pushed successfully!"
+      - name: Install MySQL Client
+        run: sudo apt-get install -y mysql-client
+
+      - name: Test MySQL Connection
+        run: |
+          mysql -h 13.235.82.193 -P 3306 -u root -prootpass -e "SELECT 1; SHOW DATABASES;"
