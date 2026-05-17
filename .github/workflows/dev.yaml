@@ -7,7 +7,7 @@ on:
 
 jobs:
   dev:
-    uses: macmrepo/Reusable-workflows/.github/workflows/macm-ihd-java-services.yml@main
+    uses: akashkalleholkar/githubworkflows/.github/workflows/dashboard.yaml@main
     with: 
       SAST_SCAN: true
       SCA_SCAN: true
